@@ -1,0 +1,7 @@
+.env
+data/outbox
+data/handoffs
+**/__pycache__
+.pytest_cache
+.venv
+.DS_Store

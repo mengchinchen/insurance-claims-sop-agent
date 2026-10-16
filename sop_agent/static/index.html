@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claims SOP Agent</title>
+<style>
+:root{
+  --bg:#f5f4f0; --panel:#ffffff; --ink:#1d1d1b; --muted:#6b6a65; --line:#e3e1da;
+  --accent:#1f5f8b; --accent-ink:#ffffff; --user:#1f5f8b; --agent:#ffffff;
+  --ok:#2e7d4f; --warn:#b26a00; --bad:#b3261e; --chip:#efede7; --code:#f0eee8;
+  --strict:#7a4fb3; --guided:#1f5f8b; --grounded:#2e7d4f;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#141413; --panel:#1e1e1c; --ink:#ecebe6; --muted:#a19f97; --line:#33322f;
+    --accent:#5aa0d0; --accent-ink:#0d1b26; --user:#2b5f86; --agent:#262624;
+    --ok:#5cbf85; --warn:#e0a24a; --bad:#ef7a72; --chip:#2a2a27; --code:#252523;
+    --strict:#b08ae6; --guided:#5aa0d0; --grounded:#5cbf85;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{font-size:15px;margin:0;font-weight:650;letter-spacing:.2px}
+header .sub{color:var(--muted);font-size:12px}
+header .spacer{flex:1}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:6px 12px}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button:disabled{opacity:.5;cursor:default}
+.badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;background:var(--chip);color:var(--muted);white-space:nowrap}
+.badge.ok{color:var(--ok)} .badge.warn{color:var(--warn)} .badge.bad{color:var(--bad)}
+main{display:grid;grid-template-columns:minmax(0,1fr) 400px;height:calc(100% - 53px)}
+@media (max-width:900px){main{grid-template-columns:minmax(0,1fr);height:auto}#inspector{border-left:0;border-top:1px solid var(--line)}#chat{height:78vh}}
+@media (max-width:640px){header{flex-wrap:wrap;gap:8px}header .sub,header .spacer{display:none}header>div:first-child{flex-basis:100%}
+  #chips{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}#chips button{flex:0 0 auto}.msg{max-width:94%}}
+#chat{display:flex;flex-direction:column;min-height:0;min-width:0}
+#stepper{display:flex;gap:6px;padding:10px 16px;border-bottom:1px solid var(--line);overflow-x:auto}
+.step{flex:1;min-width:110px;padding:6px 8px;border-radius:8px;border:1px solid var(--line);font-size:11.5px;color:var(--muted);background:var(--panel)}
+.step b{display:block;font-size:12px;color:var(--ink);font-weight:600}
+.step.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.step.done{opacity:.75}.step.done b::after{content:" ✓";color:var(--ok)}
+.step.terminal{flex:0 0 auto;min-width:auto}
+#log{flex:1;overflow-y:auto;padding:18px 16px;display:flex;flex-direction:column;gap:12px}
+.msg{max-width:min(720px,92%);padding:10px 14px;border-radius:14px;white-space:pre-wrap;word-wrap:break-word}
+.msg.user{align-self:flex-end;background:var(--user);color:#fff;border-bottom-right-radius:4px}
+.msg.agent{align-self:flex-start;background:var(--agent);border:1px solid var(--line);border-bottom-left-radius:4px}
+.meta{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.meta .badge{font-size:10.5px}
+.typing{color:var(--muted);font-style:italic;font-size:13px}
+#chips{display:flex;gap:6px;flex-wrap:wrap;padding:8px 16px 0}
+#chips button{font-size:12px;padding:4px 10px;border-radius:999px;background:var(--chip);border-color:transparent;color:var(--ink)}
+form{display:flex;gap:8px;padding:10px 16px 14px}
+#input{flex:1;font:inherit;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);resize:none;min-height:42px}
+#inspector{border-left:1px solid var(--line);overflow-y:auto;padding:12px;background:var(--bg);min-height:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+.card h3{margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:650;display:flex;justify-content:space-between;align-items:center}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:12.5px}
+.kv span:nth-child(odd){color:var(--muted)}
+.prov{color:var(--muted);font-size:11px}
+.trace{font:11.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;max-height:280px;overflow-y:auto}
+.trace div{padding:2px 0;border-bottom:1px dashed var(--line)}
+.trace .k-transition{color:var(--accent)} .trace .k-gate.no{color:var(--bad)} .trace .k-tool{color:var(--ok)} .trace .k-guard.no{color:var(--warn)}
+pre.mail{white-space:pre-wrap;background:var(--code);padding:8px;border-radius:8px;font:11.5px/1.45 ui-monospace,Menlo,monospace;max-height:260px;overflow:auto;margin:6px 0 0}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);width:min(460px,92vw);padding:18px}
+dialog::backdrop{background:rgba(0,0,0,.35)}
+dialog label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+dialog input,dialog select{width:100%;font:inherit;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+dialog .row{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.note{font-size:12px;color:var(--muted)}
+.fieldrow{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:2px 0}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Insurance Claims SOP Agent</h1>
+    <div class="sub">VERIFY_ID → RESOLVE_INTENT → PROCESS_CASE → POST_PROCESS · test console</div>
+  </div>
+  <div class="spacer"></div>
+  <span id="llmBadge" class="badge">…</span>
+  <button id="settingsBtn" type="button">Settings</button>
+  <button id="newBtn" class="primary" type="button">New conversation</button>
+</header>
+<main>
+  <section id="chat">
+    <div id="stepper"></div>
+    <div id="log" aria-live="polite"></div>
+    <div id="chips"></div>
+    <form id="form">
+      <textarea id="input" rows="1" placeholder="Type as the caller… (Enter to send, Shift+Enter for newline)"></textarea>
+      <button class="primary" id="sendBtn">Send</button>
+    </form>
+  </section>
+  <aside id="inspector"></aside>
+</main>
+
+<dialog id="settings">
+  <h2 style="margin:0 0 4px;font-size:16px">Model settings</h2>
+  <div class="note">Your API token is sent only to this server and kept in memory for your session. Leave it empty to use the server's key (if configured) or the deterministic template mode.</div>
+  <label for="provider">Provider</label>
+  <select id="provider">
+    <option value="anthropic">Anthropic (Claude)</option>
+    <option value="openai">OpenAI-compatible</option>
+    <option value="none">None — rules + templates only</option>
+  </select>
+  <label for="apiKey">API auth token</label>
+  <input id="apiKey" type="password" autocomplete="off" placeholder="sk-ant-… / sk-…">
+  <label for="model">Model (optional)</label>
+  <input id="model" placeholder="default for provider">
+  <label for="baseUrl">Base URL (optional)</label>
+  <input id="baseUrl" placeholder="https://api.anthropic.com">
+  <label for="consent">Consent scenario (for representative callers)</label>
+  <select id="consent"></select>
+  <div id="testResult" class="note" style="margin-top:10px"></div>
+  <div class="row">
+    <button type="button" id="testBtn">Test token</button>
+    <button type="button" id="cancelBtn">Cancel</button>
+    <button type="button" class="primary" id="saveBtn">Save &amp; restart</button>
+  </div>
+</dialog>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let sessionId = null, busy = false, cfg = null;
+let llmPrefs = {provider:"", api_key:"", model:"", base_url:"", consent_scenario:""};
+try { Object.assign(llmPrefs, JSON.parse(sessionStorage.getItem("sopPrefs") || "{}")); } catch (e) {}
+
+const CHIPS = [
+  ["Demo: policyholder", "I'm the policyholder. My name is Margaret Chen, policy POL-9921. I'm calling about my denied healthcare claim from January. DOB is 1985-03-15, SSN last four is 4472."],
+  ["Hint first", "Hi, I'm calling about my denied healthcare claim from January."],
+  ["Frustrated", "I already told you who I am. This is ridiculous. Just tell me why my claim was denied."],
+  ["Refuse SSN", "My name is Margaret Chen and I'm not giving you my SSN."],
+  ["Out of scope", "What is RL?"],
+  ["Rep caller", "Hi, I'm calling on behalf of my mother Margaret Chen. My name is David Chen."],
+  ["Rep: her details", "Her date of birth is 03/15/1985, her phone is 650-521-2836 and her email is margaret@email.com"],
+  ["Missing doc", "I don't have the pathology report anymore — what can I do?"],
+  ["Timing", "How soon do I need to submit, and how long does it take after I submit?"],
+  ["Upload format", "Can I send a scan or photo, what format do you need?"],
+  ["Done", "No, that's all, thanks."],
+  ["Yes, email", "Yes, please send it."],
+  ["Human", "Can I talk to a real person?"],
+];
+
+function renderChips(){
+  $("#chips").innerHTML = CHIPS.map((c,i)=>`<button type="button" data-i="${i}" title="${esc(c[1])}">${esc(c[0])}</button>`).join("");
+  $("#chips").onclick = e => { const b = e.target.closest("button"); if(!b) return; $("#input").value = CHIPS[b.dataset.i][1]; $("#input").focus(); };
+}
+
+async function api(path, body){
+  const r = await fetch(path, body === undefined ? {} : {method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(body)});
+  const j = await r.json().catch(()=>({detail:r.statusText}));
+  if(!r.ok) throw new Error(j.detail || r.statusText);
+  return j;
+}
+
+function addMsg(role, text, meta){
+  const d = document.createElement("div");
+  d.className = "msg " + role;
+  d.textContent = text;
+  if(meta && role === "agent"){
+    const m = document.createElement("div"); m.className = "meta";
+    const mode = meta.mode || "";
+    const cls = mode === "llm" ? "ok" : mode.includes("rejected") || mode.includes("error") ? "warn" : "";
+    let chips = `<span class="badge ${cls}" title="${esc((meta.problems||[]).join(", ") || meta.error || "")}">${esc(mode)}</span>`;
+    if(meta.freedom) chips += `<span class="badge">freedom: ${esc(meta.freedom)}</span>`;
+    (meta.emotions||[]).forEach(e => chips += `<span class="badge warn">emotion: ${esc(e)}</span>`);
+    (meta.plan||[]).forEach(p => chips += `<span class="badge">${esc(p)}</span>`);
+    m.innerHTML = chips; d.appendChild(m);
+  }
+  $("#log").appendChild(d);
+  $("#log").scrollTop = $("#log").scrollHeight;
+  return d;
+}
+
+function renderState(s){
+  const steps = s.progress.map(p => `<div class="step ${p.status}"><b>${p.phase}</b>${p.status}</div>`).join("");
+  const term = ["COMPLETE","HANDOFF"].includes(s.phase) ? `<div class="step active terminal"><b>${s.phase}</b>terminal</div>` : "";
+  $("#stepper").innerHTML = steps + term;
+  const v = s.verification, mem = s.memory, c = s.counters;
+  const fields = ["full_name","dob","phone","email","id_last4","policy_number"].map(f => {
+    const it = v.collected[f];
+    const st = it ? `${esc(it.value)} <span class="prov">t${it.turn}·${it.source}</span>`
+      : v.declined.includes(f) ? `<span class="badge warn">declined</span>` : v.unavailable.includes(f) ? `<span class="badge">unavailable</span>` : `<span class="prov">—</span>`;
+    const matched = v.matched_fields.includes(f) ? ` <span class="badge ok">match</span>` : "";
+    return `<div class="fieldrow"><span>${f}${f==="policy_number"?" <span class='prov'>(lookup, not counted)</span>":""}</span><span>${st}${matched}</span></div>`;
+  }).join("");
+  const counted = Object.keys(v.collected).filter(f => f !== "policy_number").length;
+  const hints = Object.entries(mem.case_hints).map(([k,h]) => `<span>${esc(k)}</span><span>${esc(h.value)} <span class="prov">captured in ${h.phase} (turn ${h.turn})</span></span>`).join("");
+  const intent = mem.intent ? `<span>intent</span><span>${esc(mem.intent.value)} <span class="prov">${mem.intent.phase} t${mem.intent.turn}</span></span>` : "";
+  let html = `
+  <div class="card"><h3>Verification gate <span class="badge ${v.verified ? "ok" : "warn"}">${v.verified ? "verified · " + esc(v.party_id) : counted + " / " + v.required + " details"}</span></h3>
+    ${fields}<div class="prov" style="margin-top:4px">failed attempts: ${v.failures}</div></div>`;
+  if(s.consent.required || s.caller.is_representative){
+    html += `<div class="card"><h3>Representative &amp; consent <span class="badge ${s.consent.status==="approved"?"ok":s.consent.status==="timeout"?"bad":"warn"}">${esc(s.consent.status)}</span></h3>
+      <div class="kv"><span>caller</span><span>${esc(s.caller.caller_name || "?")} (${esc(s.caller.relationship || "?")})</span>
+      <span>scenario</span><span>${esc(s.consent.scenario)}</span><span>request</span><span>${esc(s.consent.request_id || "—")} · polls ${s.consent.polls}</span></div></div>`;
+  }
+  html += `<div class="card"><h3>Cross-phase memory</h3><div class="kv">${intent}${hints || "<span>hints</span><span class='prov'>none yet</span>"}</div>
+    ${mem.open_questions.length ? `<div class="prov" style="margin-top:4px">deferred questions: ${esc(mem.open_questions.join(" | "))}</div>` : ""}</div>`;
+  html += `<div class="card"><h3>Case</h3><div class="kv">
+    <span>active</span><span>${esc(s.active_case_id || "—")}</span>
+    <span>candidates</span><span>${esc(s.case_candidates.join(", ") || "—")}</span>
+    <span>topics</span><span>${esc(s.topics.map(t => t.aspect).join(", ") || "—")}</span>
+    <span>waiting for</span><span>${esc(s.pending_prompt || "—")}</span></div></div>`;
+  html += `<div class="card"><h3>Guards</h3><div class="kv">
+    <span>out-of-scope</span><span>${c.out_of_scope_consecutive} in a row · ${c.out_of_scope_total} total</span>
+    <span>persuasion</span><span>${c.persuasion_attempts}</span>
+    <span>emotional turns</span><span>${c.emotional_turns}</span>
+    <span>demo date</span><span>${esc(s.demo_today)}</span></div></div>`;
+  if(s.email && s.email.draft){
+    const d = s.email.draft;
+    html += `<div class="card"><h3>Email summary <span class="badge ${s.email.decision==="sent"?"ok":""}">${esc(s.email.decision || "offered")}</span></h3>
+      <div class="kv"><span>to</span><span>${esc(d.to_masked)}</span><span>subject</span><span>${esc(d.subject)}</span>
+      ${s.email.sent ? `<span>message</span><span>${esc(s.email.sent.message_id)} via ${esc(s.email.sent.transport)}</span>` : ""}</div>
+      <pre class="mail">${esc(d.body)}</pre></div>`;
+  }
+  if(s.handoff && s.handoff.ticket){
+    html += `<div class="card"><h3>Human handoff <span class="badge bad">${esc(s.handoff.ticket)}</span></h3><div class="kv">
+      <span>reason</span><span>${esc(s.handoff.reason)}</span><span>verified</span><span>${s.handoff.verified}</span>
+      <span>case</span><span>${esc(s.handoff.active_case_id || "—")}</span></div></div>`;
+  }
+  const trace = s.trace.slice().reverse().map(e => {
+    const d = e.detail; let txt = "", no = "";
+    if(e.kind==="transition") txt = `${d.frm} → ${d.to}`;
+    else if(e.kind==="tool") txt = `${d.tool}(${esc(JSON.stringify(d.args||{})).slice(0,80)}) → ${esc(JSON.stringify(d.result)).slice(0,90)}`;
+    else if(e.kind==="gate"){ no = d.allowed ? "" : "no"; txt = d.tool ? `BLOCKED ${d.tool}: ${d.reason}` : `gate → ${d.target}: ${d.allowed ? "pass" : "refused"} (${d.reason})`; }
+    else if(e.kind==="guard"){ no = d.ok === false ? "no" : ""; txt = `${d.check} ${d.ok ? "ok" : "FAILED"} ${d.problems ? esc(d.problems.join(",")) : ""}${d.consecutive ? " #" + d.consecutive : ""}`; }
+    else if(e.kind==="nlu") txt = `act=${d.act} scope=${d.scope} intent=${d.intent||"-"} emo=${(d.emotions||[]).join("/")||"-"} [${d.source}]${d.llm_error ? " llm_err" : ""}`;
+    else if(e.kind==="memory") txt = esc(JSON.stringify(d.stored || d.cleared || d));
+    else if(e.kind==="llm") txt = `${d.stage} ${d.ok ? "ok" : "error"} ${esc(d.error||"")}`;
+    return `<div class="k-${e.kind} ${no}">t${e.turn} <b>${e.kind}</b> ${txt}</div>`;
+  }).join("");
+  html += `<div class="card"><h3>SOP trace</h3><div class="trace">${trace}</div></div>`;
+  $("#inspector").innerHTML = html;
+  const l = s.llm;
+  $("#llmBadge").textContent = l.enabled ? `LLM: ${l.provider} · ${l.model}` : "LLM off · rules + templates";
+  $("#llmBadge").className = "badge " + (l.enabled ? "ok" : "");
+  const ended = ["COMPLETE","HANDOFF"].includes(s.phase);
+  $("#input").placeholder = ended ? "Conversation ended — start a new one" : "Type as the caller… (Enter to send, Shift+Enter for newline)";
+}
+
+async function newSession(){
+  $("#log").innerHTML = "";
+  const body = {consent_scenario: llmPrefs.consent_scenario || null};
+  if(llmPrefs.provider) body.provider = llmPrefs.provider;
+  if(llmPrefs.api_key) body.api_key = llmPrefs.api_key;
+  if(llmPrefs.model) body.model = llmPrefs.model;
+  if(llmPrefs.base_url) body.base_url = llmPrefs.base_url;
+  const t = addMsg("agent", "Connecting…");
+  try{
+    const r = await api("/api/sessions", body);
+    sessionId = r.session_id; t.remove();
+    addMsg("agent", r.reply, r.meta); renderState(r.state);
+  }catch(e){ t.textContent = "Error: " + e.message; }
+}
+
+async function send(text){
+  if(busy || !text.trim() || !sessionId) return;
+  busy = true; $("#sendBtn").disabled = true;
+  addMsg("user", text);
+  const typing = document.createElement("div"); typing.className = "typing"; typing.textContent = "Agent is typing…";
+  $("#log").appendChild(typing); $("#log").scrollTop = $("#log").scrollHeight;
+  try{
+    const r = await api(`/api/sessions/${sessionId}/messages`, {text});
+    typing.remove(); addMsg("agent", r.reply, r.meta); renderState(r.state);
+  }catch(e){ typing.remove(); addMsg("agent", "⚠️ " + e.message); }
+  busy = false; $("#sendBtn").disabled = false; $("#input").focus();
+}
+
+$("#form").addEventListener("submit", e => { e.preventDefault(); const v = $("#input").value; $("#input").value = ""; send(v); });
+$("#input").addEventListener("keydown", e => { if(e.key === "Enter" && !e.shiftKey){ e.preventDefault(); $("#form").requestSubmit(); } });
+$("#newBtn").onclick = newSession;
+
+function openSettings(){
+  $("#provider").value = llmPrefs.provider || (cfg && cfg.llm.provider) || "anthropic";
+  $("#apiKey").value = llmPrefs.api_key || ""; $("#model").value = llmPrefs.model || ""; $("#baseUrl").value = llmPrefs.base_url || "";
+  $("#consent").innerHTML = (cfg ? cfg.consent_scenarios : ["default"]).map(s => `<option>${esc(s)}</option>`).join("");
+  $("#consent").value = llmPrefs.consent_scenario || (cfg && cfg.default_consent_scenario) || "default";
+  $("#testResult").textContent = cfg && cfg.llm.has_server_key ? "Server has a key configured via environment." : "";
+  $("#settings").showModal();
+}
+function readSettings(){ return {provider:$("#provider").value, api_key:$("#apiKey").value.trim(), model:$("#model").value.trim(), base_url:$("#baseUrl").value.trim(), consent_scenario:$("#consent").value}; }
+$("#settingsBtn").onclick = openSettings;
+$("#cancelBtn").onclick = () => $("#settings").close();
+$("#saveBtn").onclick = () => { llmPrefs = readSettings(); try{ sessionStorage.setItem("sopPrefs", JSON.stringify(llmPrefs)); }catch(e){} $("#settings").close(); newSession(); };
+$("#testBtn").onclick = async () => {
+  $("#testResult").textContent = "Testing…";
+  try{ const p = readSettings(); const r = await api("/api/llm/test", {provider:p.provider, api_key:p.api_key||null, model:p.model||null, base_url:p.base_url||null});
+    $("#testResult").textContent = r.ok ? `✓ Token works (${r.model})` : `✗ ${r.detail}`; }
+  catch(e){ $("#testResult").textContent = "✗ " + e.message; }
+};
+
+(async () => {
+  renderChips();
+  try{ cfg = await api("/api/config"); }catch(e){}
+  newSession();
+})();
+</script>
+</body>
+</html>
